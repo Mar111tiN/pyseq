@@ -1,6 +1,7 @@
 import pandas as pd
 from script_utils import show_output
-
+from pyseq_utils import full_collapse
+from clinscore import get_cosmic_score
 
 def roll(chrom_df, window_size):
     '''
@@ -42,14 +43,14 @@ def compute_cosmic_density(df, filter_setting={}, verbose=1):
     return df
 
 
-def filter_cosmic(df, filter_settings={}, verbose=1):
+def filter_cosmic(df, filter_setting={}, verbose=1):
     '''
     filters the mutation list based on cosmic score and mutation density
     '''
     ini_len = len(df.index)
     
-    cosmic_min = filter_settings['cosmic_min']
-    density_min = filter_settings['cosmic_density_min']
+    cosmic_min = filter_setting['cosmic_min']
+    density_min = filter_setting['cosmic_density_min']
     df = df.query('(cosmic_score > @cosmic_min) or (cosmic_density > @density_min)')
     filter_len = len(df.index)
     if verbose:
@@ -57,70 +58,40 @@ def filter_cosmic(df, filter_settings={}, verbose=1):
     return df
 
 
-def collapse(chrom_df, pad=100):
+def cosmic_master(df, cosmic_weights_file="", filter_setting={}, verbose=1):
     '''
-    detect overlapping regions and collapse stretches
-    expects single chromosome dfs
+    takes an annovar annotated mutation list and returns the collapsed mutation list based on filter list
     '''
-    pd.options.mode.chained_assignment = None
-    # copy just to make sure
-    cr = chrom_df.copy()
-    #extend the coords
-    cr['Start'] = cr['Start'] - pad
-    cr['End'] = cr['End'] + pad
-    # get the overlaps
-    cr['ov1'] = (cr['End'] > cr.shift(-1)['Start']).astype(int)
-    cr['ov2'] = (cr['Start'] < cr.shift(1)['End']).astype(int)
-    # assign overlap groups
-    cr['ovgroup'] = ((cr['ov1'] * (cr['ov2'] == 0).astype(int)).cumsum()) * (cr['ov1'] | (cr['ov2']))   
-    # remove the isolated mutations from the grouping because they are all group 0 and re-index
-    cr_nogap = cr.query('ovgroup == 0')
-    cr = cr.query('ovgroup > 0').reset_index(drop=True)
-    # assign negative indices to isolated mutations
-    cr_nogap.loc[:,'ovgroup'] = -cr_nogap.index
-    # re-combine for proper grouping
-    cr = pd.concat([cr_nogap, cr]).reset_index(drop=True).sort_values(["Chr", "Start"], ascending=True)
-    # condense the groups and keep important metrices
-    cg = cr.groupby("ovgroup").agg(dict(
-        Chr="first",
-        Start="min",
-        End="max",
-        Gene=["first","last"],
-        cytoband="min",
-        gnomAD="max",
-        cosmic_score="sum",
-        cosmic_density="mean",
-        Func="count"
-    ))
     
-    # reassign the multiindex to simple column index
-    cg.columns = [f"{col[0]}-{col[1]}" if col[0] == "Gene" else col[0] for col in cg.columns]
-    # consolidate the Gene Info
-    cg.loc[cg['Gene-first'] == cg['Gene-last'], 'Gene-last'] = ""
-    cg = cg.rename({"Gene-first": "Gene", "Gene-last":"Gene2", "Func":"mutN"}, axis=1).reset_index()
-    # add the length of the overlap
-    cg.loc[:, 'stretch'] = cg['End'] - cg['Start']
-    #reorder columns
-    # cg.columns = list(cg.columns[1:]) + [cg.columns[0]]
-    cg = cg.sort_values(['Chr', 'Start'], ascending=True).reset_index(drop=True)
-    pd.options.mode.chained_assignment = "warn"
-    return cg, cr
-
-def full_collapse(df, padding=100, verbose=1):
-    '''
-    cycles through chromosomes and returns df with collapsed mutation regions
-    '''
+    filter_info = "".join([f"\n\t[{col}:\t{filter_setting[col]}]" for col in ["cosmic_rolling_min", "rolling_window_size", "cosmic_min", "cosmic_density_min", "padding"]])
+    show_output(f"Creating custom panel based on limits set in filter settings.{filter_info}")
+    if cosmic_weights_file:
+        df_scored = get_cosmic_score(df, cosmic_weights_file=cosmic_weights_file, threads=10, verbose=1)
+    else:
+        if 'cosmic_score' in df.columns:
+            show_output(f"Using precomputed cosmic scores! For recomputation, provide a cosmic weights file", time=False)
+            df_scored = df
+        else:
+            show_output("No clinscore in df and no weights file to compute clinscores. Sorry - stopping here!", color="warning")
+            return
+    
+    # perform rolling window computation
     if verbose:
-        show_output("Collapsing adjacent mutations and including bait padding")
-    chrom_dfs = []
-    chrom_group_dfs = []
-    for chrom in df['Chr'].unique():
-        if verbose > 1:
-            show_output(f"Collapsing chromosome {chrom}", time=False)
-        chrom_group_df, chrom_df = collapse(df.query("Chr == @chrom"), pad=padding)
-        chrom_group_dfs.append(chrom_group_df)
-        chrom_dfs.append(chrom_df)
-    df = pd.concat(chrom_dfs)
-    group_df = pd.concat(chrom_group_dfs).loc[:,['Chr', 'Start', 'End', 'Gene', 'Gene2', 'cytoband', 'gnomAD',
-       'cosmic_score', 'cosmic_density', 'ovgroup', 'mutN', 'stretch']].sort_values(['Chr', 'Start'])
-    return df, group_df
+        show_output("Perform rolling window computation", time=False)
+    df = compute_cosmic_density(df_scored, filter_setting=filter_setting, verbose=verbose)
+
+    # filter based on cosmic scores
+    if verbose:
+        show_output("Filtering out background mutations", time=False)
+    df = filter_cosmic(df, filter_setting=filter_setting, verbose=verbose)
+
+    # collapse the df
+    if verbose:
+        show_output("Collapsing the mutations to adjacency groups", time=False)
+    df, group_df = full_collapse(df, padding=filter_setting['padding'], verbose=verbose)
+
+    # meaningfull output
+    mutN = group_df['mutN'].sum()
+    kb_size = int(group_df['stretch'].sum() / 1000)
+    show_output(f"Library size = {kb_size}kb - {mutN} mutations included")
+    return df, group_df, df_scored
