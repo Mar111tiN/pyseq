@@ -1,0 +1,26 @@
+type:
+    non_small_cell_carcinoma: 25
+    adenocarcinoma: 25
+    bronchioloalveolar_adenocarcinoma: 25
+    acinar_adenocarcinoma: 25
+    adenosquamous_carcinoma: 25
+    cancer: 2
+    carcinoma: 2 
+    large_cell_carcinoma: 25
+    large_cell_neuroendocrine_carcinoma: 25
+    large_cell_undifferentiated_carcinoma: 25
+location:
+    lung: 10
+    bronchus: 10
+    left: 5
+    upper_lobe: 10
+    left_bronchus: 10
+    left_lower_lobe: 10
+    left_upper_lobe: 10
+    middle_lobe: 10
+    right: 5
+    right_bronchus: 10
+    right_lower_lobe: 10
+    right_middle_lobe: 10
+    right_upper_lobe: 10
+    trachea: 10
