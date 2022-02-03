@@ -103,7 +103,7 @@ def full_collapse(df, padding=100, verbose=1):
         chrom_group_df, chrom_df = collapse(df.query("Chr == @chrom"), pad=padding)
         chrom_group_dfs.append(chrom_group_df)
         chrom_dfs.append(chrom_df)
-    df = pd.concat(chrom_dfs)
+    df = pd.concat(chrom_dfs).drop(['ov1', 'ov2'], axis=1)
     group_df = pd.concat(chrom_group_dfs).loc[:,['Chr', 'Start', 'End', 'Gene', 'Gene2', 'cytoband', 'gnomAD',
        'cosmic_score', 'cosmic_density', 'ovgroup', 'mutN', 'stretch']].sort_values(['Chr', 'Start'])
     return df, group_df
