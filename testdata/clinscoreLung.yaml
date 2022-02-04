@@ -24,3 +24,29 @@ location:
     right_middle_lobe: 10
     right_upper_lobe: 10
     trachea: 10
+genes:
+    - ERBB4
+    - PDGFRA
+    - KDR
+    - RET
+    - BRCA2
+    - ROS1
+    - MAP3K4
+    - JAK3
+    - ERBB3
+    - MYC
+    - NOTCH4
+    - PIK3CD
+    - CDK12
+    - NOTCH1
+    - PTEN
+    - SMARCB1
+    - PDGFRB
+    - SMO
+    - PIK3CB
+    - MAP2K1
+    - MAPK8
+    - MAP2K2
+    - CDKN1B
+    - CDK3
+    - NOTCH 1
