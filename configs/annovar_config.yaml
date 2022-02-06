@@ -1,0 +1,37 @@
+build: hg38
+annovar_path: /Users/martinszyska/Sites/Bio/pyseq/code/anno2019 # full path to the annovar code folder
+humandb: annotation/annovar/humandb  # path relative to STATIC folder
+annofiles:
+    # - refGene
+    - ensGene34
+    - cytoBand
+    # - genomicSuperDups
+    ##### POPULATIONS ########
+    # - esp6500_all
+    # - esp6500siv2_all  #
+    # - 1000g2010nov_all
+    # - 1000g2014oct_all
+    # - snp138
+    # - snp138NonFlagged
+    # - avsnp150_HAEv7
+    # - gnomad_exome_all
+    - gnomad30
+    - dbSNP154
+    # - gnomad_af.lna # not indexed
+    # - exac03_all
+    # - dbscsnv11
+    # - snp131
+    # - snp131NonFlagged
+    ##### CLINICAL DATA ###### 
+    # - cosmic70
+    - cosmic95
+    - icgc29
+    # - clinvar_20150629
+    # - clinvar_20170905
+    # - clinvar2019_short
+    - clinvar2021
+    ##### PREDICTIONS ########
+    # - ljb26_all
+    # - dbnsfp30a
+    # - dbnsfp35a_HAEv7  # 70 columns packed with predictions !!
+    # - spidex
