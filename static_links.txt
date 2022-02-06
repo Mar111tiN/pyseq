@@ -1,0 +1,4 @@
+https://www.dropbox.com/s/g6b975t8ubphsrj/hg38_static.tar.gz
+https://www.dropbox.com/s/gx1082w2gm9mx6j/hg38_static.tar.gz.md5
+https://www.dropbox.com/s/33eq4fc3l97hony/PON.tar
+https://www.dropbox.com/s/gxew4xuimtfciwa/PON.tar.md5
