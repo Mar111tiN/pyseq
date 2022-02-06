@@ -100,7 +100,7 @@ def full_collapse(df, padding=100, verbose=1):
     chrom_group_dfs = []
     for chrom in df['Chr'].unique():
         if verbose > 1:
-            show_output(f"Collapsing chromosome {chrom}", time=False)
+            show_output(f"Collapsing chromosome {chrom}")
         chrom_group_df, chrom_df = collapse(df.query("Chr == @chrom"), pad=padding)
         chrom_group_dfs.append(chrom_group_df)
         chrom_dfs.append(chrom_df)
@@ -175,21 +175,47 @@ def get_bedsize(bed_file, verbose=0):
     while True:
         df = pd.read_csv(bed_file, sep="\t", skiprows=i, names=['Chr', 'Start', 'End', 'ID', 'desc', 'info'])
         if is_bed(df):
-            show_output(f"Skipping first {i} rows of bedfile", color="warning", time=False)
+            show_output(f"Skipping first {i} rows of bedfile", color="warning")
             break
         i += 1
         
         
     if verbose:
-        show_output("Collapsing adjacent mutations", time=False)
+        show_output("Collapsing adjacent mutations")
     chrom_group_dfs = []
     for chrom in df['Chr'].unique():
         if verbose > 1:
-            show_output(f"Collapsing chromosome {chrom}", time=False)
+            show_output(f"Collapsing chromosome {chrom}")
         chrom_group_df = collapse_bed(df.query("Chr == @chrom"))
         chrom_group_dfs.append(chrom_group_df)
     group_df = pd.concat(chrom_group_dfs).loc[:,['Chr', 'Start', 'End', 'ovgroup','stretch']].sort_values(['Chr', 'Start'])
     
     bedsize = group_df['stretch'].sum()
-    show_output(f"bedfile {os.path.basename(bed_file)} has a design size of {bedsize / 1000}kb", color="success", time=False)
+    show_output(f"bedfile {os.path.basename(bed_file)} has a design size of {bedsize / 1000}kb", color="success")
     return bedsize
+
+
+def pos2bed(df, chr_start_end=[], as_string=False):
+    '''
+    takes a dataframe with three columns Chr, Start and End and converts and returns a 
+    pd.Series() containing the respective bed coords as "Chr:Start-End"
+    If the input file has different cols for Chr, Start, End provide them as list of col names
+    '''
+
+    if len(chr_start_end) == 3:
+        coords = df[chr_start_end[0]] + ":" + (df[chr_start_end[1]]).astype(str) + "-" + (df[chr_start_end[2]]).astype(str)
+    else:
+        coords = df['Chr'] + ":" + (df['Start']).astype(str) + "-" + (df['End']).astype(str)
+    # convert to string without indices for direct copy to clipboard
+    if as_string:
+        coords = coords.to_string(index=False)
+    return coords
+
+
+def bed2pos(col):
+    '''
+    converts a df column into a df with the three columns Chr Start End
+    '''
+    s = col.str.extract(r"(?P<Chr>chr[0-9]+):(?P<Start>[0-9]+)-(?P<End>[0-9]+)")
+
+    return s

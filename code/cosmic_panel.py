@@ -2,6 +2,8 @@ import pandas as pd
 from script_utils import show_output
 from pyseq_utils import full_collapse
 from clinscore import get_cosmic_score
+from clinscore import condense_muts_clinscore
+
 
 def roll(chrom_df, window_size):
     '''
@@ -26,7 +28,7 @@ def compute_cosmic_density(df, filter_setting={}, verbose=1):
     '''
     chrom_dfs = []
     if verbose:
-        show_output("Computing mutation density", time=False)
+        show_output("Computing mutation density")
     # remove background mutations
     cosmin = filter_setting['cosmic_rolling_min']
     df = df.query('cosmic_score >= @cosmin')
@@ -58,7 +60,7 @@ def filter_cosmic(df, filter_setting={}, verbose=1):
     return df
 
 
-def cosmic_master(df, cosmic_weights_file="", filter_setting={}, verbose=1):
+def cosmic_panel_master(df, cosmic_weights_file="", filter_setting={}, threads=10, verbose=1, condense_mut_positions=True):
     '''
     takes an annovar annotated mutation list and returns the collapsed mutation list based on filter list
     '''
@@ -66,28 +68,37 @@ def cosmic_master(df, cosmic_weights_file="", filter_setting={}, verbose=1):
     filter_info = "".join([f"\n\t[{col}:\t{filter_setting[col]}]" for col in ["cosmic_rolling_min", "rolling_window_size", "cosmic_min", "cosmic_density_min", "padding"]])
     show_output(f"Creating custom panel based on limits set in filter settings.{filter_info}")
     if cosmic_weights_file:
-        df_scored = get_cosmic_score(df, cosmic_weights_file=cosmic_weights_file, threads=10, verbose=1)
+        # remove_duplicate_positions has to be set because we are only interested in the highest interest positions
+        df_scored = get_cosmic_score(df, cosmic_weights_file=cosmic_weights_file, threads=threads, verbose=1)
+        # reduce to unique mutations (by summing up the clinscore) (needed for panel design)
+        # + group by start position and keep the first
+        if condense_mut_positions:
+            show_output("Condensing the mutations per position.")
+            df_scored = condense_muts_clinscore(df_scored, threads=threads)
     else:
         if 'cosmic_score' in df.columns:
-            show_output(f"Using precomputed cosmic scores! For recomputation, provide a cosmic weights file", time=False)
+            show_output(f"Using precomputed cosmic scores! For recomputation, provide a cosmic weights file")
             df_scored = df
         else:
             show_output("No clinscore in df and no weights file to compute clinscores. Sorry - stopping here!", color="warning")
             return
+
+    # + sort by cosmic_score    # + sort by cosmic_score
+    df_scored = df_scored.sort_values(['Chr', 'Start', 'cosmic_score'], ascending=[True, True, False])
     
     # perform rolling window computation
     if verbose:
-        show_output("Perform rolling window computation", time=False)
+        show_output("Perform rolling window computation")
     df = compute_cosmic_density(df_scored, filter_setting=filter_setting, verbose=verbose)
 
     # filter based on cosmic scores
     if verbose:
-        show_output("Filtering out background mutations", time=False)
+        show_output("Filtering out background mutations")
     df = filter_cosmic(df, filter_setting=filter_setting, verbose=verbose)
 
     # collapse the df
     if verbose:
-        show_output("Collapsing the mutations to adjacency groups", time=False)
+        show_output("Collapsing the mutations to adjacency groups")
     df, group_df = full_collapse(df, padding=filter_setting['padding'], verbose=verbose)
 
     gene_df = df.groupby("Gene").agg({'cosmic_score':'sum', 'type':'count'}).rename({'type':'count'}, axis=1).reset_index().sort_values('count', ascending=False)
@@ -95,7 +106,7 @@ def cosmic_master(df, cosmic_weights_file="", filter_setting={}, verbose=1):
     # meaningfull output
     mutN = group_df['mutN'].sum()
     kb_size = int(group_df['stretch'].sum() / 1000)
-    show_output(f"Library size = {kb_size}kb - {mutN} mutations included")
+    show_output(f"Finished! Library size = {kb_size}kb - {mutN} mutations included", color="success")
     return df, gene_df, group_df, df_scored
 
 
