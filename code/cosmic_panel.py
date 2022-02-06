@@ -15,8 +15,8 @@ def roll(chrom_df, window_size):
     roll = chrom_df.rolling(window_size).agg({"Chr": "mean", "Start": min, "End":max, "cosmic_score": sum}).fillna(0).astype(int)
     # compute the density
     roll.loc[:, "cosmic_density"] = roll['cosmic_score'] / (roll['End'] - roll['Start'])
-    # remerge
-    chrom_df = chrom_df.merge(roll.drop(["End", "cosmic_score"], axis=1), on=['Chr', 'Start'], how="left")
+    # remerge (and drop preexising cosmic_density columns if any)
+    chrom_df = chrom_df.drop(["cosmic_density"], axis=1, errors="ignore").merge(roll.drop(["End", "cosmic_score"], axis=1), on=['Chr', 'Start'], how="left")
     # fill NA overhangs via ffill
     chrom_df.loc[:, "cosmic_density"] = chrom_df["cosmic_density"].fillna(method="ffill")
     return chrom_df
@@ -60,7 +60,7 @@ def filter_cosmic(df, filter_setting={}, verbose=1):
     return df
 
 
-def cosmic_panel_master(df, cosmic_weights_file="", filter_setting={}, threads=10, verbose=1, condense_mut_positions=True):
+def cosmic_panel_master(cosmic_df, cosmic_weights_file="", filter_setting={}, threads=10, verbose=1, condense_mut_positions=True):
     '''
     takes an annovar annotated mutation list and returns the collapsed mutation list based on filter list
     '''
@@ -69,54 +69,55 @@ def cosmic_panel_master(df, cosmic_weights_file="", filter_setting={}, threads=1
     show_output(f"Creating custom panel based on limits set in filter settings.{filter_info}")
     if cosmic_weights_file:
         # remove_duplicate_positions has to be set because we are only interested in the highest interest positions
-        df_scored = get_cosmic_score(df, cosmic_weights_file=cosmic_weights_file, threads=threads, verbose=1)
+        cosmic_scored = get_cosmic_score(cosmic_df, cosmic_weights_file=cosmic_weights_file, threads=threads, verbose=1)
         # reduce to unique mutations (by summing up the clinscore) (needed for panel design)
         # + group by start position and keep the first
         if condense_mut_positions:
             show_output("Condensing the mutations per position.")
-            df_scored = condense_muts_clinscore(df_scored, threads=threads)
+            cosmic_scored = condense_muts_clinscore(cosmic_scored, threads=threads)
     else:
-        if 'cosmic_score' in df.columns:
+        if 'cosmic_score' in cosmic_df.columns:
             show_output(f"Using precomputed cosmic scores! For recomputation, provide a cosmic weights file")
-            df_scored = df
+            cosmic_scored = cosmic_df
         else:
             show_output("No clinscore in df and no weights file to compute clinscores. Sorry - stopping here!", color="warning")
             return
 
     # + sort by cosmic_score    # + sort by cosmic_score
-    df_scored = df_scored.sort_values(['Chr', 'Start', 'cosmic_score'], ascending=[True, True, False])
+    cosmic_scored = cosmic_scored.sort_values(['Chr', 'Start', 'cosmic_score'], ascending=[True, True, False])
     
     # perform rolling window computation
     if verbose:
         show_output("Perform rolling window computation")
-    df = compute_cosmic_density(df_scored, filter_setting=filter_setting, verbose=verbose)
+    cosmic_denscored = compute_cosmic_density(cosmic_scored, filter_setting=filter_setting, verbose=verbose)
 
     # filter based on cosmic scores
     if verbose:
         show_output("Filtering out background mutations")
-    df = filter_cosmic(df, filter_setting=filter_setting, verbose=verbose)
+    panel_mut_df = filter_cosmic(cosmic_denscored, filter_setting=filter_setting, verbose=verbose)
 
     # collapse the df
     if verbose:
         show_output("Collapsing the mutations to adjacency groups")
-    df, group_df = full_collapse(df, padding=filter_setting['padding'], verbose=verbose)
-
-    gene_df = df.groupby("Gene").agg({'cosmic_score':'sum', 'type':'count'}).rename({'type':'count'}, axis=1).reset_index().sort_values('count', ascending=False)
-
+    panel_mut_df, panel_region_df = full_collapse(panel_mut_df, padding=filter_setting['padding'], verbose=verbose)
     # meaningfull output
-    mutN = group_df['mutN'].sum()
-    kb_size = int(group_df['stretch'].sum() / 1000)
+    mutN = panel_region_df['mutN'].sum()
+    kb_size = int(panel_region_df['stretch'].sum() / 1000)
     show_output(f"Finished! Library size = {kb_size}kb - {mutN} mutations included", color="success")
-    return df, gene_df, group_df, df_scored
+    return panel_mut_df, panel_region_df, cosmic_scored
 
 
-def analyze_genes(cosmic_muts, gene_df, group_df, cosmic_scored, panel_excel="", save_excel=""):
+def analyze_genes(panel_mut_df, cosmic_scored, panel_excel="", save_excel=""):
     '''
     accumulate infos
     '''
     # get the top genes of all of cosmic
     top_genes = cosmic_scored.groupby("Gene").agg({'cosmic_score':"sum"}).reset_index().sort_values('cosmic_score', ascending=False)
-    
+
+    # get the gene_based output
+    gene_df = panel_mut_df.groupby("Gene").agg({'cosmic_score':'sum',  'type':'count'}).rename({'type':'count'}, axis=1).reset_index().sort_values('count', ascending=False)
+
+
     # merge with the genes from the designed panel
     merge = top_genes.merge(gene_df, on="Gene", how="outer", suffixes=('_total', '_panel'))
     
@@ -137,11 +138,13 @@ def analyze_genes(cosmic_muts, gene_df, group_df, cosmic_scored, panel_excel="",
     cosmic_not_included = merge2.query('cosmic_score_total > 50000 and cosmic_score_panel == 0')
     in_panel = merge2.query('count >0')
     
-    # write to excel
-    with pd.ExcelWriter(save_excel, mode="w") as writer:
-        cosmic_muts.to_excel(writer, sheet_name="AllMutationsInPanel", index=False)
-        in_panel.to_excel(writer, sheet_name="GenesInPanel", index=False)
-        cosmic_not_included.to_excel(writer, sheet_name="TopCosmic_missing", index=False)
-        list_not_included.to_excel(writer, sheet_name="missing_from_gene_list", index=False)
+    if save_excel:
+        show_output(f"Saving to excel file {save_excel}.")
+        # write to excel
+        with pd.ExcelWriter(save_excel, mode="w") as writer:
+            panel_mut_df.to_excel(writer, sheet_name="AllMutationsInPanel", index=False)
+            in_panel.to_excel(writer, sheet_name="GenesInPanel", index=False)
+            cosmic_not_included.to_excel(writer, sheet_name="TopCosmic_missing", index=False)
+            list_not_included.to_excel(writer, sheet_name="missing_from_gene_list", index=False)
     
     return in_panel, cosmic_not_included, list_not_included
