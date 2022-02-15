@@ -13,6 +13,20 @@ def remove_gene_dups(df, gene_col="Gene"):
     return df
 
 
+def remove_cosmic_dups(df):
+    '''
+    for some reason, sometimes genes appear more often in the DB with different types
+    probably after applying remove_gene_dups
+    '''
+    no_dups = df.loc[~df.duplicated(['Chr', 'Start', 'End', 'Ref', 'Alt'], keep=False), :]
+    dups = df.loc[df.duplicated(['Chr', 'Start', 'End', 'Ref', 'Alt'], keep=False), :]
+    # remove by grouping and concating the types
+    dups = dups.groupby([c for c in dups.columns if c not in ["type", "Mut_ID"]]).agg({"Mut_ID": "first", "type":lambda x: "+".join(x)}).reset_index()
+    df = pd.concat([no_dups, dups]).sort_values(['Chr', 'Start', 'End', 'Ref', 'Alt'])
+    return df
+
+
+
 # load the annovar output
 def load_anno(file):
     '''

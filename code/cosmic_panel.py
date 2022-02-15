@@ -104,7 +104,7 @@ def cosmic_panel_master(cosmic_df, cosmic_weights_file="", filter_setting={}, th
     mutN = panel_region_df['mutN'].sum()
     kb_size = int(panel_region_df['stretch'].sum() / 1000)
     show_output(f"Finished! Library size = {kb_size}kb - {mutN} mutations included", color="success")
-    return panel_mut_df, panel_region_df, cosmic_scored
+    return panel_mut_df, panel_region_df, cosmic_denscored
 
 
 def read_gene_list(panel_excel, gene_col="GeneInPanel"):
@@ -165,6 +165,6 @@ def analyze_genes(panel_mut_df, cosmic_scored, panel_excel="", save_excel=""):
             panel_mut_df.to_excel(writer, sheet_name="AllMutationsInPanel", index=False)
             in_panel.to_excel(writer, sheet_name="GenesInPanel", index=False)
             cosmic_not_included.to_excel(writer, sheet_name="missing_TopCosmic", index=False)
-            cosmic_not_included.to_excel(writer, sheet_name="missing_otherPanels", index=False)
+            otherPanel_not_included.to_excel(writer, sheet_name="missing_otherPanels", index=False)
     
     return in_panel, cosmic_not_included, otherPanel_not_included
