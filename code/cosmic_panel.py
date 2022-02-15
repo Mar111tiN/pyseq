@@ -1,6 +1,6 @@
 import pandas as pd
 from script_utils import show_output
-from pyseq_utils import full_collapse
+from pyseq_utils import full_collapse, remove_gene_dups
 from clinscore import get_cosmic_score
 from clinscore import condense_muts_clinscore
 
@@ -107,36 +107,56 @@ def cosmic_panel_master(cosmic_df, cosmic_weights_file="", filter_setting={}, th
     return panel_mut_df, panel_region_df, cosmic_scored
 
 
+def read_gene_list(panel_excel, gene_col="GeneInPanel"):
+    '''
+    reads a list of Genes ("GeneInPanel") with optional notes column and (n = XX) counts
+    '''
+    
+    # read the excel file
+    genes = pd.read_excel(panel_excel).dropna(subset=[gene_col]).reset_index(drop=True)
+    genes = genes.loc[~genes[gene_col].str.startswith("#"), :]
+    
+    genes.loc[:, ['Gene', 'countOtherPanels']] = genes[gene_col].str.extract(r"(?P<Gene>[A-Z0-9]+)(?: n ? = ?)?(?P<countOtherPanels>[0-9]+)?")
+
+    genes['countOtherPanels'] = genes['countOtherPanels'].fillna(1).astype(int)
+    genes['notes'] = genes['notes'].str.strip(r"[ ()]").fillna("")
+    genes = genes.sort_values(['Gene', 'notes']).groupby('Gene').agg({'notes':lambda x: "|".join(x), 'countOtherPanels':'sum'}).reset_index()
+    genes['notes'] = genes['notes'].str.strip("|").str.replace(r"^[|]+$", "", regex=True)
+    # remove possible Gene;Gene occurrences
+    genes = remove_gene_dups(genes, gene_col='Gene')
+    return genes.loc[:, ['Gene', 'countOtherPanels', 'notes']]
+
+
 def analyze_genes(panel_mut_df, cosmic_scored, panel_excel="", save_excel=""):
     '''
     accumulate infos
     '''
     # get the top genes of all of cosmic
-    top_genes = cosmic_scored.groupby("Gene").agg({'cosmic_score':"sum"}).reset_index().sort_values('cosmic_score', ascending=False)
-
-    # get the gene_based output
+    top_genes = cosmic_scored.groupby("Gene").agg({'cosmic_score':"sum", 'type':'count'}).rename({'type':'count'}, axis=1).reset_index().sort_values('cosmic_score', ascending=False)
+    
+    # get the genes in the designed panel sorted by cosmic score
     gene_df = panel_mut_df.groupby("Gene").agg({'cosmic_score':'sum',  'type':'count'}).rename({'type':'count'}, axis=1).reset_index().sort_values('count', ascending=False)
 
 
-    # merge with the genes from the designed panel
-    merge = top_genes.merge(gene_df, on="Gene", how="outer", suffixes=('_total', '_panel'))
-    
-    # load the gene list from the published genes
-    genes = pd.read_excel(panel_excel)
-    genes['panelGenes'] = genes['panelGenes'].str.replace(r" ?n ?= ?[0-9]+", "", regex=True)
-    genes = genes.dropna(axis=0, how="all").drop_duplicates().rename({'panelGenes':"Gene"}, axis=1)
-    
-    # merge together
-    merge2 = merge.merge(genes.drop("growthFactors",axis=1), on="Gene", how="outer", indicator=True)
-    
+    # merge top cosmic genes with genes from the designed panel
+    merge = top_genes.merge(gene_df, on="Gene", how="outer", suffixes=('DB', 'Panel'))
     # edit columns
-    merge2.loc[:, 'in_panel'] = merge2['_merge'].isin(['both', 'right_only']).astype(int)
-    for col in ['cosmic_score_total', 'cosmic_score_panel', 'count']:
-        merge2[col] = merge2[col].fillna(0).astype(int)
-    merge2 = merge2.drop("_merge", axis=1)
-    list_not_included = merge2.query('in_panel == 1 and cosmic_score_panel == 0')
-    cosmic_not_included = merge2.query('cosmic_score_total > 50000 and cosmic_score_panel == 0')
-    in_panel = merge2.query('count >0')
+    for c in [c for c in merge.columns if "count" in c or "score" in c]:
+        merge.loc[:, c] = merge[c].fillna(0).astype(int)
+    
+    # load the gene list from the published genes (panel_list)
+    panel_gene_df = read_gene_list(panel_excel)
+
+    # merge genes from other panels
+    merge2 = merge.merge(panel_gene_df, on="Gene", how="outer")
+    for c in [c for c in merge2.columns if "count" in c or "score" in c]:
+        merge2.loc[:, c] = merge2[c].fillna(0).astype(int)
+    merge2.loc[:, 'notes'] = merge2['notes'].fillna("").astype(str)
+    
+    # get 
+    otherPanel_not_included = merge2.query('countOtherPanels > 0 and cosmic_scorePanel == 0').drop(['countDB', 'cosmic_scorePanel', 'countPanel'], axis=1)
+    cosmic_not_included = merge2.query('cosmic_scoreDB > 50000 and cosmic_scorePanel == 0').drop(['cosmic_scorePanel', 'countPanel'], axis=1)
+    in_panel = merge2.query('countPanel > 0')
     
     if save_excel:
         show_output(f"Saving to excel file {save_excel}.")
@@ -144,7 +164,7 @@ def analyze_genes(panel_mut_df, cosmic_scored, panel_excel="", save_excel=""):
         with pd.ExcelWriter(save_excel, mode="w") as writer:
             panel_mut_df.to_excel(writer, sheet_name="AllMutationsInPanel", index=False)
             in_panel.to_excel(writer, sheet_name="GenesInPanel", index=False)
-            cosmic_not_included.to_excel(writer, sheet_name="TopCosmic_missing", index=False)
-            list_not_included.to_excel(writer, sheet_name="missing_from_gene_list", index=False)
+            cosmic_not_included.to_excel(writer, sheet_name="missing_TopCosmic", index=False)
+            cosmic_not_included.to_excel(writer, sheet_name="missing_otherPanels", index=False)
     
-    return in_panel, cosmic_not_included, list_not_included
+    return in_panel, cosmic_not_included, otherPanel_not_included
