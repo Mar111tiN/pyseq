@@ -2,6 +2,17 @@ import pandas as pd
 import os
 from script_utils import show_output
 
+
+def remove_gene_dups(df, gene_col="Gene"):
+    '''
+    cosmic dbs sometimes contain Gene entries of this kind: RB1;RB1
+    this tool removes these entries
+    '''
+    for i in range(3):
+        df.loc[df[gene_col].str.contains(";"), gene_col] = df[gene_col].str.replace(r"([A-Z0-9]+);\1", r"\1", regex=True)
+    return df
+
+
 # load the annovar output
 def load_anno(file):
     '''
