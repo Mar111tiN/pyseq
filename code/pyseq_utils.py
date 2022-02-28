@@ -232,9 +232,9 @@ def pos2bed(df, chr_start_end=[], as_string=False):
     '''
 
     if len(chr_start_end) == 3:
-        coords = df[chr_start_end[0]] + ":" + (df[chr_start_end[1]]).astype(str) + "-" + (df[chr_start_end[2]]).astype(str)
+        coords = df[chr_start_end[0]].astype(str) + ":" + (df[chr_start_end[1]]).astype(str) + "-" + (df[chr_start_end[2]]).astype(str)
     else:
-        coords = df['Chr'] + ":" + (df['Start']).astype(str) + "-" + (df['End']).astype(str)
+        coords = df['Chr'].astype(str) + ":" + (df['Start']).astype(str) + "-" + (df['End']).astype(str)
     # convert to string without indices for direct copy to clipboard
     if as_string:
         coords = coords.to_string(index=False)

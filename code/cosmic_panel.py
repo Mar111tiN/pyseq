@@ -1,6 +1,6 @@
 import pandas as pd
 from script_utils import show_output
-from pyseq_utils import full_collapse, remove_gene_dups
+from pyseq_utils import full_collapse, remove_gene_dups, pos2bed
 from clinscore import get_cosmic_score
 from clinscore import condense_muts_clinscore
 
@@ -163,6 +163,7 @@ def analyze_genes(panel_mut_df, cosmic_scored, panel_excel="", save_excel=""):
         # write to excel
         with pd.ExcelWriter(save_excel, mode="w") as writer:
             panel_mut_df.to_excel(writer, sheet_name="AllMutationsInPanel", index=False)
+            pos2bed(panel_mut_df).to_excel(writer, sheet_name="AllMutationsBed", index=False, header=None)
             in_panel.to_excel(writer, sheet_name="GenesInPanel", index=False)
             cosmic_not_included.to_excel(writer, sheet_name="missing_TopCosmic", index=False)
             otherPanel_not_included.to_excel(writer, sheet_name="missing_otherPanels", index=False)
