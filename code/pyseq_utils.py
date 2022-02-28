@@ -74,13 +74,13 @@ def collapse(chrom_df, pad=100):
     # copy just to make sure
     cr = chrom_df.copy()
     #extend the coords
-    cr['Start'] = cr['Start'] - pad
-    cr['End'] = cr['End'] + pad
+    cr.loc[:,'Start'] = cr['Start'] - pad
+    cr.loc[:,'End'] = cr['End'] + pad
     # get the overlaps
-    cr['ov1'] = (cr['End'] > cr.shift(-1)['Start']).astype(int)
-    cr['ov2'] = (cr['Start'] < cr.shift(1)['End']).astype(int)
+    cr.loc[:,'ov1'] = (cr['End'] > cr.shift(-1)['Start']).astype(int)
+    cr.loc[:,'ov2'] = (cr['Start'] < cr.shift(1)['End']).astype(int)
     # assign overlap groups
-    cr['ovgroup'] = ((cr['ov1'] * (cr['ov2'] == 0).astype(int)).cumsum()) * (cr['ov1'] | (cr['ov2']))   
+    cr.loc[:,'ovgroup'] = ((cr['ov1'] * (cr['ov2'] == 0).astype(int)).cumsum()) * (cr['ov1'] | (cr['ov2']))   
     # remove the isolated mutations from the grouping because they are all group 0 and re-index
     cr_nogap = cr.query('ovgroup == 0')
     cr = cr.query('ovgroup > 0').reset_index(drop=True)
@@ -132,6 +132,10 @@ def full_collapse(df, padding=100, verbose=1):
     df = pd.concat(chrom_dfs).drop(['ov1', 'ov2'], axis=1)
     group_df = pd.concat(chrom_group_dfs).loc[:,['Chr', 'Start', 'End', 'Gene', 'Gene2', 'cytoband', 'gnomAD',
        'cosmic_score', 'cosmic_density', 'ovgroup', 'mutN', 'stretch']].sort_values(['Chr', 'Start'])
+
+    # now, remove the padding again
+    df.loc[:,'Start'] = df['Start'] + padding
+    df.loc[:,'End'] = df['End'] - padding
     return df, group_df
 
 
